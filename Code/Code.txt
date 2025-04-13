@@ -1,0 +1,120 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
+// Set the LCD address and dimensions according to your specific module
+#define I2C_ADDR 0x27 // Change this to your LCD I2C address
+#define SDA_PIN 21    // Define the SDA pin
+#define SCL_PIN 22    // Define the SCL pin
+#define LCD_WIDTH 16  // Change this according to your LCD columns
+#define LCD_HEIGHT 2  // Change this according to your LCD rows
+
+// Create an LCD object
+LiquidCrystal_I2C lcd(I2C_ADDR, LCD_WIDTH, LCD_HEIGHT);
+
+// IR sensor pins
+const int irSensor_Front_Left = 5;   // Pin for front left IR sensor
+const int irSensor_Front_Right = 18; // Pin for front right IR sensor
+const int irSensor_Rear_Left = 19;   // Pin for rear left IR sensor
+const int irSensor_Rear_Right = 23;  // Pin for rear right IR sensor
+
+// Headlight LED pin
+const int headlight_led = 2; // Pin for headlight LED
+
+// Tail-light LED pin
+const int taillight_led = 4; // Pin for headlight LED
+
+// Task handle
+TaskHandle_t lcdTask;
+
+// Function prototype for the LCD task
+void lcdPrintTask(void *pvParameters);
+
+void setup() {
+  // Start the Wire library with defined SDA and SCL pins
+  Wire.begin(SDA_PIN, SCL_PIN);
+
+  // Initialize the LCD with the address and dimensions
+  lcd.init();
+
+  // Turn on the backlight
+  lcd.backlight();
+
+  // Set headlight LED pin as output
+  pinMode(headlight_led, OUTPUT);
+
+  // Set taillight LED pin as output
+  pinMode(taillight_led, OUTPUT);
+
+  // Create a task to handle LCD printing in processor 0
+  xTaskCreatePinnedToCore(lcdPrintTask, "LCD Print Task", 4096, NULL, 1, &lcdTask, 0);
+
+  // Set IR sensor pins as inputs
+  pinMode(irSensor_Front_Left, INPUT);
+  pinMode(irSensor_Front_Right, INPUT);
+  pinMode(irSensor_Rear_Left, INPUT);
+  pinMode(irSensor_Rear_Right, INPUT);
+}
+
+void loop() {
+  // Nothing in the loop as the task handles LCD printing
+}
+
+// Task to handle LCD printing based on IR sensor activation in processor 0
+void lcdPrintTask(void *pvParameters) {
+  unsigned long startTime = 0;
+  unsigned long endTime = 0;
+  for (;;) {
+
+    startTime = millis(); // Start time before processing
+
+    bool frontLeftTriggered = digitalRead(irSensor_Front_Left) == LOW;
+    bool frontRightTriggered = digitalRead(irSensor_Front_Right) == LOW;
+    bool rearLeftTriggered = digitalRead(irSensor_Rear_Left) == LOW;
+    bool rearRightTriggered = digitalRead(irSensor_Rear_Right) == LOW;
+
+    if (frontLeftTriggered) {
+      lcd.setCursor(0, 0);
+      lcd.print("Front Left !!!");
+    } else if (frontRightTriggered) {
+      lcd.setCursor(0, 0);
+      lcd.print("Front Right !!!");
+    } else if (rearRightTriggered) {
+      lcd.setCursor(0, 0);
+      lcd.print("Rear Right !!!");
+    } else if (rearLeftTriggered) {
+      lcd.setCursor(0, 0);
+      lcd.print("Rear Left !!!");
+    } else {
+      lcd.clear();
+    }
+
+    // Flicker headlight LED if both front sensors are triggered
+    if (frontLeftTriggered || frontRightTriggered) {
+      digitalWrite(headlight_led, HIGH);
+      delay(random(20, 100)); // Flickering duration
+      digitalWrite(headlight_led, LOW);
+      delay(random(50, 200)); // Time between flickers
+    } else {
+      digitalWrite(headlight_led, LOW); // Turn off LED if sensors are not triggered
+    }
+
+    // Flicker headlight LED if both front sensors are triggered
+    if (rearLeftTriggered || rearRightTriggered) {
+      digitalWrite(taillight_led, HIGH);
+      delay(random(20, 100)); // Flickering duration
+      digitalWrite(taillight_led, LOW);
+      delay(random(50, 200)); // Time between flickers
+    } else {
+      digitalWrite(taillight_led, LOW); // Turn off LED if sensors are not triggered
+    }
+
+    endTime = millis(); // End time after processing
+    lcd.setCursor(0, 1);
+    lcd.print("Time in ms: ");
+    lcd.print(endTime - startTime); // Print time taken on LCD
+
+    vTaskDelay(pdMS_TO_TICKS(200)); // Adjust the delay as needed for responsiveness
+  }
+}
